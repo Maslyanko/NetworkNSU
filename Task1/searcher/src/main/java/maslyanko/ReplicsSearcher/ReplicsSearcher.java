@@ -17,20 +17,30 @@ public class ReplicsSearcher {
     private Map<String, Long> replics;
     private DatagramSocket sendSocket = null;
     private MulticastSocket receiveSocket = null;
-
+    
+    private boolean timeToStop = false;
     private Thread sender;
     private Thread printer;
+    private Thread receiver;
 
     public ReplicsSearcher(String groupIP, int port) {
         this.groupIP = groupIP;
         this.port = port;
         replics = new HashMap<>();
+    }
+
+    public void searche() {
+        if (timeToStop) {
+            return;
+        }
+
+        timeToStop = false;
 
         try {
             sendSocket = new DatagramSocket();
 
             sender = new Thread(() -> {
-                while (true) {
+                while (!timeToStop) {
                     sendMessage(MessageType.LIVE);
                     try {
                         Thread.sleep(1000);
@@ -41,7 +51,7 @@ public class ReplicsSearcher {
             });
 
             printer = new Thread(() -> {
-                while (true) {
+                while (!timeToStop) {
                     printReplics();
                     try {
                         Thread.sleep(5000);
@@ -51,14 +61,19 @@ public class ReplicsSearcher {
                 }
             });
 
+            receiver = new Thread(() -> {
+                while (!timeToStop) {
+                    recieveMulticast();
+                }
+            });
+
             sender.start();
             printer.start();
+            receiver.start();
         } catch (SocketException e) {
             System.out.println("Failed to create DatagramSocket");
         }
-    }
 
-    public void searche() {
         try {
             receiveSocket = new MulticastSocket(port);
             receiveSocket.joinGroup(InetAddress.getByName(groupIP));
@@ -71,38 +86,48 @@ public class ReplicsSearcher {
     }
 
     public void shutDown() {
-        
+        if (!timeToStop) {
+            return;
+        }
+
+        timeToStop = true;
+
+        try {
+            sender.join();
+            printer.join();
+            receiver.join();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+            return;
+        }
+
+        sendMessage(MessageType.LEAVE);
+
+        sendSocket.close();
     }
 
     private void recieveMulticast() {
         byte[] buffer = new byte[1024];
         DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
 
-        while (true) {
-            try {
-                receiveSocket.receive(packet);
-                InetAddress senderAddress = packet.getAddress();
-                int senderPort = packet.getPort();
+        try {
+            receiveSocket.receive(packet);
 
-                if (senderAddress.equals(senderAddress) && senderPort == port) {
-                    continue;
-                }
+            String senderIP = packet.getAddress().getHostAddress();
+            long timestamp = System.currentTimeMillis();
+            MessageType messge = MessageType.identifyMessageType(packet.getData()[0]);
 
-                String senderIP = packet.getAddress().getHostAddress();
-                long timestamp = System.currentTimeMillis();
-                MessageType messge = MessageType.identifyMessageType(packet.getData()[0]);
-
-                if (messge == MessageType.LIVE) {
-                    replics.put(senderIP, timestamp);
-                } else if (messge == MessageType.LEAVE) {
-                    replics.remove(senderIP);
-                } else {
-                    System.out.println("Unknown message type;");
-                    continue;
-                }
-            } catch (IOException e) {
-                e.printStackTrace();
+            if (messge == MessageType.LIVE) {
+                replics.put(senderIP, timestamp);
+            } else if (messge == MessageType.LEAVE) {
+                replics.remove(senderIP);
+            } else {
+                System.out.println("Unknown message type;");
+                return;
             }
+
+        } catch (IOException e) {
+            e.printStackTrace();
         }
     }
 
@@ -121,7 +146,12 @@ public class ReplicsSearcher {
     private void printReplics() {
         System.out.println("Replics:");
         for (Map.Entry<String, Long> entry : replics.entrySet()) {
-            System.out.println(entry.getKey());
+            long timeSinceLastLive = System.currentTimeMillis() - entry.getValue();
+            if (timeSinceLastLive < 10000) {
+                System.out.println(entry.getKey());
+            } else {
+                replics.remove(entry);
+            }
         }
     }
 }
