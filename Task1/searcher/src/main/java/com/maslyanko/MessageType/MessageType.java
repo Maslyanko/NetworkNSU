@@ -1,4 +1,4 @@
-package maslyanko.MessageType;
+package com.maslyanko.MessageType;
 
 public enum MessageType{
     LIVE(1),
