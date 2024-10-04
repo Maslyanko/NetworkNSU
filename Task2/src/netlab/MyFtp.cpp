@@ -2,6 +2,7 @@
 #include <fstream>
 #include <iostream>
 #include <filesystem>
+#include <chrono>
 
 namespace {
     int charsToInt(const char* chars) {
@@ -133,11 +134,31 @@ namespace netlab {
 
         file.write(&buffer[fileNameLength + 5], alreadyRead - fileNameLength - 5);
 
+        int bytesPer3Sec = 0;
+        auto startTime = std::chrono::steady_clock::now();
+
+        auto globalStartTime = startTime;
+
         while (alreadyRead < fileSize) {
             int bytesRead = socket.get()->read_some(boost::asio::buffer(buffer, bufferSize));
+            bytesPer3Sec += bytesRead;
             file.write(buffer, bytesRead);
             alreadyRead += bytesRead;
+
+            if (std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - startTime).count() >= 3) {
+                std::cout << "Speed: " << bytesPer3Sec / 1024 / 3 << " KB/s." << std::endl;
+                bytesPer3Sec = 0;
+
+                if (bytesRead == 0) {
+                    break;
+                }
+
+                startTime = std::chrono::steady_clock::now();
+            }
         }
+
+        auto globalEndTime = std::chrono::steady_clock::now();
+        std::cout << "Average Speed: " << alreadyRead / (globalEndTime - globalStartTime).count() << "KB/s." << std::endl;
 
         file.close();
 
