@@ -5,11 +5,14 @@
 using namespace boost::asio;
 
 namespace {
-    void handling(ip::tcp::socket socket) {
-        std::cout << "New client" << socket.local_endpoint().address().to_string();
-        std::string message;
-        socket.read_some(buffer(message, 20));
-        std::cout << ": " << message << std::endl;
+    void handling(const std::string& path, ip::tcp::socket socket) {
+        netlab::MyFtp session(std::make_shared<ip::tcp::socket>(std::move(socket)));
+
+        try {
+            session.receiveFile(path);
+        } catch (netlab::NetLabException& e) {
+            std::cout << "Client: " + e.getMessage() << std::endl;
+        }
     }
 }
 
@@ -31,7 +34,7 @@ namespace netlab {
         this->pathToUploads = pathToUploads;
     }
 
-    void MyFtpServer::receive() {
+    void MyFtpServer::receive() const {
         io_context context;
         ip::tcp::acceptor acceptor(context, ip::tcp::endpoint(ip::address::from_string("127.0.0.1"), port));
 
@@ -41,12 +44,12 @@ namespace netlab {
             ip::tcp::socket socket(context);
             acceptor.accept(socket);
 
-            std::thread handler(handling, std::move(socket));
+            std::thread handler(handling, pathToUploads, std::move(socket));
             handler.detach();
         }
     }
 
-    void MyFtpServer::shutdown() {
+    void MyFtpServer::shutdown() const {
         // TODO: Implement server shutdown
     }
 }

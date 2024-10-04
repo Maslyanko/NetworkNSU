@@ -1,6 +1,8 @@
 #pragma once
 #include <string>
 #include <boost/asio.hpp>
+#include <memory>
+#include <mutex>
 
 namespace netlab {
 class NetLabException {
@@ -12,10 +14,18 @@ public:
 };
 
 class MyFtp {
+private:
+    std::shared_ptr<boost::asio::ip::tcp::socket> socket;
+    int bufferSize;
+    static std::mutex mutex;
 public:
-    MyFtp(boost::asio::ip::tcp::socket socket);
-    void sendFile(const std::string& file);
-    void receiveFile();
+    MyFtp(std::shared_ptr<boost::asio::ip::tcp::socket> socket);
+
+    void sendFile(const std::string& filePath) const;
+    void receiveFile(const std::string& uploadsDir) const;
+
+    std::shared_ptr<boost::asio::ip::tcp::socket> getSocket() const;
+    ~MyFtp();
 };
 
 class MyFtpClient {
@@ -24,7 +34,7 @@ private:
 public:
     MyFtpClient(const std::string& serverAddress, int port);
 
-    void send(const std::string& file);
+    void send(const std::string& file) const;
 };
 
 class MyFtpServer {
@@ -37,7 +47,7 @@ public:
     MyFtpServer(const std::string& pathToUploads);
     MyFtpServer(int port, const std::string& pathToUploads);
 
-    void receive();
-    void shutdown();
+    void receive() const;
+    void shutdown() const;
 };
 }
